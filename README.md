@@ -1,81 +1,68 @@
 # TC Translator (Terminology-Controlled Translator)
 
-A Python package that extends Google Translate with terminology control. It first substitutes domain-specific terms with IDs, translates the text, then replaces the IDs with approved translations.
+A Python package that extends Google Translate with terminology control.  It first substitutes domain-specific terms with IDs, translates the  text, then replaces the IDs with approved translations.
 
 ## Features
+
 - Domain-specific terminology control
 - Support for multiple languages and domains
-- Simple API similar to Google Translate
-- CLI interface for quick translations
 - Automatic terminology detection from CSV files
+- Async/await support for better performance
 
 ## Installation
 
-```bash
+bash
+
+```
 git clone https://github.com/yourusername/tc-translate.git
 cd tc-translate
 pip install -e .
 ```
+
+
 
 Or install directly:
 
 bash
 
 ```
-pip install -e git+https://github.com/yourusername/tc-translate.git
+pip install git+https://github.com/yourusername/tc-translate.git
 ```
 
 
 
-## Usage
-
-### As a Python package:
+## Quick Start
 
 python
 
 ```
+import asyncio
 from tc_translate import TCTranslator
 
-# Initialize translator for agriculture domain in Twi
-translator = TCTranslator(domain='agric', target_lang='twi')
+async def main():
+    translator = TCTranslator(domain='agric', target_lang='ak')
+    result = await translator._translate_async("The farmer uses an abattoir and acreage for farming.")
+    print(result['text'])
 
-# Translate text with terminology control
-result = translator.translate("The farmer uses an abattoir and acreage for farming.")
-print(result.text)
+# In Jupyter/Colab
+await main()
+
+# In regular Python
+# asyncio.run(main())
 ```
 
 
 
-### Command Line Interface:
+## More Examples
 
-bash
+For more comprehensive examples and usage patterns, see our [Google Colab Notebook](https://colab.research.google.com/drive/1xi6KXJXHB9F-zT-_6g23-YAUzDclyexP?usp=sharing).
 
-```
-# Basic translation
-tc-translate "The farmer uses an abattoir" --domain agric --target twi
+The notebook includes:
 
-# From file
-tc-translate --input text.txt --domain science --target twi
-
-# List available domains and languages
-tc-translate --list
-```
-
-
-
-### Using the Google Translate-like API:
-
-python
-
-```
-from tc_translate import Translator
-
-translator = Translator()
-result = translator.translate("abattoir and acreage", src='en', dest='twi', domain='agric')
-print(result.text)
-```
-
-
+- Side-by-side comparison of direct vs terminology-controlled translation
+- Batch translation examples
+- How to add your own terminology files
+- Working with different domains and languages
 
 ## Terminology Files
 
@@ -92,8 +79,6 @@ id,term,translation
 2,aboiteau,nsu ban ɔkwan
 ...
 ```
-
-
 
 ## Language Code Support
 
@@ -117,28 +102,6 @@ python
 ```
 # Same terminology file, but using Google's code
 translator = TCTranslator(domain='agric', target_lang='ak')
-```
-
-
-
-### Common Language Mappings:
-
-- `twi` → `ak` (Akan/Twi)
-- `fra` → `fr` (French)
-- `deu` → `de` (German)
-- `spa` → `es` (Spanish)
-- `yor` → `yo` (Yoruba)
-
-### Check supported languages:
-
-bash
-
-```
-# List all available domains and languages
-tc-translate list
-
-# Get information about a language code
-tc-translate langinfo twi
 ```
 
 
