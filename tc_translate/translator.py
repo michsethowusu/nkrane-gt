@@ -9,6 +9,23 @@ from .language_codes import convert_lang_code, is_google_supported
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def run_async_in_sync_context(coro):
+    """
+    Run async coroutine in sync context, handling existing event loops.
+    """
+    try:
+        # Check if we're already in an event loop
+        loop = asyncio.get_running_loop()
+        # We're in an async context, need to handle differently
+        future = asyncio.run_coroutine_threadsafe(coro, loop)
+        return future.result(timeout=30)  # 30 second timeout
+    except RuntimeError:
+        # No running event loop, we can use asyncio.run
+        return asyncio.run(coro)
+    except TimeoutError:
+        logger.error("Translation timed out after 30 seconds")
+        raise
+
 class TCTranslator:
     def __init__(self, domain: str, target_lang: str, 
                  src_lang: str = 'en', terminologies_dir: str = None):
@@ -136,7 +153,7 @@ class TCTranslator:
         Returns:
             Dictionary with translation results
         """
-        return asyncio.run(self.translate(text, **kwargs))
+        return run_async_in_sync_context(self.translate(text, **kwargs))
     
     async def batch_translate(self, texts: list, **kwargs) -> list:
         """Translate multiple texts asynchronously."""
@@ -144,7 +161,7 @@ class TCTranslator:
     
     def batch_translate_sync(self, texts: list, **kwargs) -> list:
         """Synchronous wrapper for batch translation."""
-        return asyncio.run(self.batch_translate(texts, **kwargs))
+        return run_async_in_sync_context(self.batch_translate(texts, **kwargs))
 
 # Google Translate-like API wrapper
 class Translator:
@@ -214,7 +231,7 @@ class Translator:
         Returns:
             Dictionary with translation results
         """
-        return asyncio.run(self.translate(text, src, dest, domain, **kwargs))
+        return run_async_in_sync_context(self.translate(text, src, dest, domain, **kwargs))
     
     async def detect(self, text: str):
         """Detect language of text."""
@@ -223,4 +240,4 @@ class Translator:
     
     def detect_sync(self, text: str):
         """Synchronous wrapper for detect."""
-        return asyncio.run(self.detect(text))
+        return run_async_in_sync_context(self.detect(text))
