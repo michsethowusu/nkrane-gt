@@ -48,11 +48,12 @@ class TCTranslator:
         Returns:
             Dictionary with translation results
         """
-        # Step 1: Preprocess - replace terms with IDs
-        preprocessed_text, replacements = self.terminology_manager.preprocess_text(text)
+        # Step 1: Preprocess - replace terms with IDs and capture original case
+        preprocessed_text, replacements, original_cases = self.terminology_manager.preprocess_text(text)
         
         logger.debug(f"Preprocessed text: {preprocessed_text}")
         logger.debug(f"Replacements: {list(replacements.keys())}")
+        logger.debug(f"Original cases: {original_cases}")
         logger.debug(f"Source language (Google): {self.src_lang_google}")
         logger.debug(f"Target language (Google): {self.target_lang_google}")
         
@@ -78,10 +79,11 @@ class TCTranslator:
                 
                 translated_with_placeholders = google_result.text
                 
-                # Step 3: Postprocess - replace IDs with translations
+                # Step 3: Postprocess - replace IDs with translations, preserving original case
                 final_text = self.terminology_manager.postprocess_text(
                     translated_with_placeholders,
-                    replacements
+                    replacements,
+                    original_cases
                 )
                 
                 return {
@@ -133,6 +135,35 @@ class TCTranslator:
             return asyncio.run(self._translate_async(text, **kwargs))
         except TimeoutError:
             logger.error("Translation timed out after 30 seconds")
+            raise
+    
+    async def batch_translate(self, texts: list, **kwargs) -> list:
+        """Translate multiple texts asynchronously."""
+        # Process one at a time to avoid rate limiting
+        results = []
+        for text in texts:
+            result = await self._translate_async(text, **kwargs)
+            results.append(result)
+            # Small delay between requests
+            await asyncio.sleep(0.1)
+        return results
+    
+    def batch_translate_sync(self, texts: list, **kwargs) -> list:
+        """Synchronous wrapper for batch translation."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                future = asyncio.run_coroutine_threadsafe(
+                    self.batch_translate(texts, **kwargs), 
+                    loop
+                )
+                return future.result(timeout=300)  # 5 minute timeout for batch
+            else:
+                return asyncio.run(self.batch_translate(texts, **kwargs))
+        except RuntimeError:
+            return asyncio.run(self.batch_translate(texts, **kwargs))
+        except TimeoutError:
+            logger.error("Batch translation timed out after 5 minutes")
             raise
 
 # Google Translate-like API wrapper
