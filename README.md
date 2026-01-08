@@ -43,7 +43,7 @@ await main()
 
 ## Terminology Files
 
-Create a terminology CSV file in the repository root directory with the naming convention:
+Create terminology CSV files in the `tc_translate/terminologies/` folder with the naming convention:
 `terminologies_{language}.csv`
 
 CSV format:
