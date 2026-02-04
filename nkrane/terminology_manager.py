@@ -1,11 +1,12 @@
-# nkrane/terminology_manager.py
+# nkrane_gt/terminology_manager.py
 import os
-import pandas as pd
+import csv
+import pickle
 import re
 import spacy
 from typing import Dict, List, Tuple, Optional, Set
 from dataclasses import dataclass
-import json
+import pkg_resources
 
 # Load spaCy model for English
 try:
@@ -19,85 +20,130 @@ except:
 
 @dataclass
 class Term:
-    id: int
     term: str
     translation: str
-    domain: str = "general"
-    language: str = "en"
-    google_language_code: str = None
+    source: str  # 'builtin' or 'user'
 
 class TerminologyManager:
-    def __init__(self, terminology_source: str = None):
+    def __init__(self, target_lang: str, user_csv_path: str = None, use_builtin: bool = True):
         """
         Initialize terminology manager.
         
         Args:
-            terminology_source: Path to terminology CSV file or directory containing CSV files.
-                              If None, looks for terminologies_{lang}.csv in terminologies/ folder
-                              inside the package directory.
+            target_lang: Target language code (ak, ee, gaa)
+            user_csv_path: Path to user's CSV file (optional)
+            use_builtin: Whether to use built-in dictionary (default: True)
         """
-        self.terminology_source = terminology_source
-        self.terms = {}  # Dictionary: term -> Term object
-        self.language = None
+        self.target_lang = target_lang
+        self.terms = {}  # Dictionary: english_term -> translation
+        self.sources = {}  # Dictionary: english_term -> source
         
-        if terminology_source:
-            self._load_terminology()
-    
-    def _load_terminology(self):
-        """Load terminology from CSV file or directory."""
-        if not self.terminology_source:
-            return
+        if use_builtin:
+            self._load_builtin_terms()
         
-        if os.path.isdir(self.terminology_source):
-            # Load all CSV files in directory
-            csv_files = [f for f in os.listdir(self.terminology_source) 
-                        if f.endswith('.csv')]
-            for csv_file in csv_files:
-                self._load_single_file(os.path.join(self.terminology_source, csv_file))
-        else:
-            # Load single CSV file
-            self._load_single_file(self.terminology_source)
+        if user_csv_path:
+            self._load_user_terms(user_csv_path)
     
-    def _load_single_file(self, csv_path: str):
-        """Load terminology from a single CSV file."""
+    def _load_builtin_terms(self):
+        """Load built-in terms from pickle file."""
         try:
-            df = pd.read_csv(csv_path)
+            # Determine which built-in file to load
+            if self.target_lang == 'ak':
+                pkl_name = 'nouns_ak.pkl'
+            elif self.target_lang == 'ee':
+                pkl_name = 'nouns_ee.pkl'
+            elif self.target_lang == 'gaa':
+                pkl_name = 'nouns_gaa.pkl'
+            else:
+                print(f"Warning: No built-in dictionary for language '{self.target_lang}'")
+                return
             
-            # Extract language from filename if not specified in data
-            basename = os.path.basename(csv_path)
-            language = "en"  # default
+            # Load from package data
+            pkl_path = pkg_resources.resource_filename('nkrane_gt', f'data/{pkl_name}')
             
-            # Try to extract language code from filename
-            lang_match = re.search(r'terminologies_([a-z]+)\.csv', basename, re.IGNORECASE)
-            if lang_match:
-                language = lang_match.group(1).lower()
-            
-            for _, row in df.iterrows():
-                term_id = int(row.get('id', len(self.terms) + 1))
-                term_text = str(row.get('term', '')).lower().strip()
-                translation = str(row.get('translation', ''))
-                domain = str(row.get('domain', 'general'))
+            if os.path.exists(pkl_path):
+                with open(pkl_path, 'rb') as f:
+                    builtin_dict = pickle.load(f)
                 
-                if term_text and translation:
-                    term_obj = Term(
-                        id=term_id,
-                        term=term_text,
-                        translation=translation,
-                        domain=domain,
-                        language=language,
-                        google_language_code=None
-                    )
-                    self.terms[term_text] = term_obj
-            
-            self.language = language
-            
+                # Add built-in terms
+                for english_term, translation in builtin_dict.items():
+                    english_term_lower = english_term.lower()
+                    self.terms[english_term_lower] = translation
+                    self.sources[english_term_lower] = 'builtin'
+                
+                print(f"Loaded {len(builtin_dict)} built-in terms for {self.target_lang}")
+            else:
+                print(f"Warning: Built-in dictionary not found: {pkl_path}")
+                
         except Exception as e:
-            print(f"Error loading terminology from {csv_path}: {e}")
+            print(f"Error loading built-in dictionary: {e}")
+    
+    def _load_user_terms(self, csv_path: str):
+        """Load user terms from CSV file."""
+        try:
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                # Try to detect the delimiter
+                sample = f.read(1024)
+                f.seek(0)
+                
+                # Check for common delimiters
+                if ',' in sample:
+                    delimiter = ','
+                elif ';' in sample:
+                    delimiter = ';'
+                elif '\t' in sample:
+                    delimiter = '\t'
+                else:
+                    delimiter = ','  # default
+                
+                reader = csv.DictReader(f, delimiter=delimiter)
+                fieldnames = [f.lower() for f in reader.fieldnames] if reader.fieldnames else []
+                
+                # Determine which columns to use
+                text_col = None
+                trans_col = None
+                
+                # Look for text column
+                for col in ['text', 'english', 'source', 'term', 'word']:
+                    if col in fieldnames:
+                        text_col = col
+                        break
+                
+                # Look for translation column
+                for col in ['text_translated', 'translation', 'target', 'translated']:
+                    if col in fieldnames:
+                        trans_col = col
+                        break
+                
+                # If not found, use first two columns
+                if not text_col or not trans_col:
+                    if len(fieldnames) >= 2:
+                        text_col = reader.fieldnames[0]
+                        trans_col = reader.fieldnames[1]
+                    else:
+                        print(f"Error: CSV needs at least 2 columns")
+                        return
+                
+                # Read terms
+                user_terms_count = 0
+                for row in reader:
+                    english_term = row.get(text_col, '').strip().lower()
+                    translation = row.get(trans_col, '').strip()
+                    
+                    if english_term and translation:
+                        self.terms[english_term] = translation
+                        self.sources[english_term] = 'user'
+                        user_terms_count += 1
+                
+                print(f"Loaded {user_terms_count} user terms from {csv_path}")
+                
+        except Exception as e:
+            print(f"Error loading user CSV: {e}")
     
     def _remove_stopwords(self, phrase: str) -> str:
         """Remove stopwords from a phrase."""
         if not SPACY_AVAILABLE:
-            # Simple fallback: remove common English stopwords
+            # Simple fallback
             words = phrase.lower().split()
             filtered_words = [w for w in words if w not in STOPWORDS]
             return ' '.join(filtered_words)
@@ -109,11 +155,20 @@ class TerminologyManager:
     def _extract_noun_phrases(self, text: str) -> List[Dict]:
         """Extract noun phrases from text using spaCy."""
         if not SPACY_AVAILABLE:
-            # Fallback: simple word-based extraction
+            # Fallback: extract words that are in our dictionary
             words = re.findall(r'\b\w+\b', text.lower())
-            return [{'text': word, 'start': text.lower().find(word), 
-                     'end': text.lower().find(word) + len(word)} 
-                    for word in words if word in self.terms]
+            result = []
+            for word in words:
+                if word in self.terms:
+                    # Find position in original text
+                    start = text.lower().find(word)
+                    if start != -1:
+                        result.append({
+                            'text': word,
+                            'start': start,
+                            'end': start + len(word)
+                        })
+            return result
         
         doc = nlp(text)
         noun_phrases = []
@@ -144,22 +199,7 @@ class TerminologyManager:
         
         return noun_phrases
     
-    def _find_matching_term(self, phrase: str) -> Optional[Term]:
-        """Find a matching term in terminology for a phrase."""
-        phrase_lower = phrase.lower().strip()
-        
-        # First try exact match
-        if phrase_lower in self.terms:
-            return self.terms[phrase_lower]
-        
-        # Try without stopwords
-        cleaned_phrase = self._remove_stopwords(phrase_lower)
-        if cleaned_phrase and cleaned_phrase in self.terms:
-            return self.terms[cleaned_phrase]
-        
-        return None
-    
-    def preprocess_text(self, text: str) -> Tuple[str, Dict[str, Term], Dict[str, str]]:
+    def preprocess_text(self, text: str) -> Tuple[str, Dict[str, str], Dict[str, str]]:
         """
         Replace noun phrases in text with placeholders.
         Only replaces phrases that are found in terminology.
@@ -168,52 +208,95 @@ class TerminologyManager:
             text: Input text
             
         Returns:
-            Tuple of (preprocessed_text, placeholder_to_term, original_cases)
+            Tuple of (preprocessed_text, placeholder_to_translation, original_cases)
         """
         if not self.terms:
             return text, {}, {}
         
-        # Extract noun phrases
-        noun_phrases = self._extract_noun_phrases(text)
+        # Split text into sentences
+        if SPACY_AVAILABLE:
+            doc = nlp(text)
+            sentences = [sent.text for sent in doc.sents]
+        else:
+            # Simple sentence splitting
+            sentences = re.split(r'[.!?]+', text)
+            sentences = [s.strip() for s in sentences if s.strip()]
         
-        # Filter to only phrases found in terminology
-        matching_phrases = []
-        for phrase in noun_phrases:
-            if self._find_matching_term(phrase['text']):
-                matching_phrases.append(phrase)
+        all_replacements = {}
+        all_original_cases = {}
+        processed_sentences = []
         
-        # Sort by position (end to start) to avoid replacement issues
-        matching_phrases.sort(key=lambda x: x['start'], reverse=True)
-        
-        preprocessed_text = text
-        replacements = {}
-        original_cases = {}
-        
-        for idx, phrase in enumerate(matching_phrases, 1):
-            term_obj = self._find_matching_term(phrase['text'])
-            if term_obj:
-                placeholder = f"<{term_obj.id}>"
+        for sentence in sentences:
+            if not sentence.strip():
+                processed_sentences.append(sentence)
+                continue
+            
+            # Extract noun phrases from this sentence
+            noun_phrases = self._extract_noun_phrases(sentence)
+            
+            # Filter to only phrases found in our dictionary
+            matching_phrases = []
+            for phrase in noun_phrases:
+                phrase_lower = phrase['text'].lower()
+                # Try exact match first
+                if phrase_lower in self.terms:
+                    matching_phrases.append(phrase)
+                else:
+                    # Try without stopwords
+                    cleaned = self._remove_stopwords(phrase_lower)
+                    if cleaned and cleaned in self.terms:
+                        matching_phrases.append({
+                            'text': cleaned,
+                            'start': phrase['start'],
+                            'end': phrase['end']
+                        })
+            
+            # Sort by position (end to start) to avoid replacement issues
+            matching_phrases.sort(key=lambda x: x['start'], reverse=True)
+            
+            preprocessed_sentence = sentence
+            sentence_replacements = {}
+            sentence_original_cases = {}
+            
+            for idx, phrase in enumerate(matching_phrases, 1):
+                phrase_lower = phrase['text'].lower()
+                translation = self.terms.get(phrase_lower)
                 
-                # Replace in text
-                preprocessed_text = (
-                    preprocessed_text[:phrase['start']] + 
-                    placeholder + 
-                    preprocessed_text[phrase['end']:]
-                )
-                
-                replacements[placeholder] = term_obj
-                original_cases[placeholder] = phrase['text']
+                if translation:
+                    placeholder = f"<{idx}>"
+                    
+                    # Replace in sentence
+                    preprocessed_sentence = (
+                        preprocessed_sentence[:phrase['start']] + 
+                        placeholder + 
+                        preprocessed_sentence[phrase['end']:]
+                    )
+                    
+                    sentence_replacements[placeholder] = translation
+                    sentence_original_cases[placeholder] = phrase['text']
+            
+            processed_sentences.append(preprocessed_sentence)
+            all_replacements.update(sentence_replacements)
+            all_original_cases.update(sentence_original_cases)
         
-        return preprocessed_text, replacements, original_cases
+        # Reconstruct text with processed sentences
+        if SPACY_AVAILABLE:
+            # Join with original punctuation
+            preprocessed_text = ' '.join(processed_sentences)
+        else:
+            # Simple join
+            preprocessed_text = '. '.join(processed_sentences) + '.'
+        
+        return preprocessed_text, all_replacements, all_original_cases
     
-    def postprocess_text(self, text: str, replacements: Dict[str, Term], 
+    def postprocess_text(self, text: str, replacements: Dict[str, str], 
                         original_cases: Dict[str, str]) -> str:
         """
         Replace placeholders with translations, preserving case.
         
         Args:
             text: Translated text with placeholders
-            replacements: Mapping from placeholders to Term objects
+            replacements: Mapping from placeholders to translations
             original_cases: Mapping from placeholders to original text for case matching
             
         Returns:
@@ -221,27 +304,25 @@ class TerminologyManager:
         """
         result = text
         
-        for placeholder, term_obj in replacements.items():
+        for placeholder, translation in replacements.items():
             original_text = original_cases.get(placeholder, '')
-            translation = term_obj.translation
             
             # Preserve original case pattern
             if original_text:
                 if original_text.isupper():
                     translation = translation.upper()
                 elif original_text.istitle():
-                    translation = translation.capitalize()
+                    translation = translation.title()
                 elif original_text[0].isupper():
-                    translation = translation.capitalize()
+                    translation = translation[0].upper() + translation[1:]
             
             result = result.replace(placeholder, translation)
         
         return result
     
-    def get_terms(self) -> Dict[str, Term]:
-        """Get all terms in the terminology."""
-        return self.terms
-    
-    def get_language(self) -> str:
-        """Get the language of the terminology."""
-        return self.language if self.language else "en"
+    def get_terms_count(self) -> Dict[str, int]:
+        """Get count of terms by source."""
+        counts = {'total': len(self.terms), 'builtin': 0, 'user': 0}
+        for source in self.sources.values():
+            counts[source] += 1
+        return counts
