@@ -1,180 +1,293 @@
-# Nkrane
+# Nkrane-GT: Enhanced Machine Translation with Terminology Control
 
-A Python package that extends Google Translate and other MT models with terminology control and noun phrase augmentation to enhance translation quality for low-resource languages.
+[![Python 3.7+](https://img.shields.io/badge/python-3.7+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Installation
+Nkrane-GT ("Nkrane - Google Translate") is a Python library that enhances Google Translate with **terminology control** for low-resource languages, with a focus on Ghanaian and African languages.
+
+It solves the problem of inconsistent translations for critical terms by allowing you to enforce specific translations for nouns and noun phrases while letting Google Translate handle the grammatical structure.
+
+---
+
+## 🌍 Why Nkrane-GT?
+
+Standard machine translation often struggles with:
+- **Inconsistent terminology** - The same word translated differently in different contexts
+- **Named entities** - People names, place names, cultural terms mistranslated
+- **Domain-specific vocabulary** - Technical, medical, or legal terms poorly handled
+- **Low-resource languages** - Limited training data for African languages
+
+**Nkrane-GT solves this by:**
+1. Extracting noun phrases from source text using NLP (spaCy)
+2. Matching them against your terminology dictionary
+3. Replacing content words with placeholders
+4. Translating with Google Translate (grammar + stopwords)
+5. Restoring your terminology with proper case preservation
+
+---
+
+## 🚀 Features
+
+| Feature | Description |
+|---------|-------------|
+| **Terminology Control** | Enforce specific translations for key terms |
+| **Built-in Dictionaries** | Pre-loaded with 860K+ terms for Akan (Twi), Ewe, and Ga |
+| **Stopword Handling** | Intelligently leaves stopwords ("a", "the", "of") for natural translation |
+| **Case Preservation** | Matches capitalization of original text |
+| **Custom Dictionaries** | Load your own CSV terminology files |
+| **Batch Translation** | Translate multiple texts efficiently |
+| **CLI Interface** | Command-line tool for quick translations |
+| **Noun Phrase Extraction** | Uses spaCy for intelligent phrase detection |
+
+---
+
+## 📦 Installation
+
+### From Source
 
 ```bash
-# Install from PyPI (when available)
-pip install nkrane
-
-# Install from source
-git clone https://github.com/GhanaNLP/nkrane.git
-cd nkrane
+git clone https://github.com/yourusername/nkrane-gt.git
+cd nkrane-gt
 pip install -e .
+```
 
-# Install spaCy model (required for noun phrase detection)
+### Requirements
+
+```bash
+pip install pandas spacy requests
 python -m spacy download en_core_web_sm
 ```
 
-## Quick Start
+---
 
-### Basic Usage
+## 🎯 Quick Start
+
+### Basic Translation
 
 ```python
-from nkrane import NkraneTranslator
+from nkrane_gt import NkraneTranslator
 
-# Initialize translator with your terminology
+# Initialize with built-in Akan (Twi) dictionary
+translator = NkraneTranslator(target_lang='ak')
+
+# Translate
+result = translator.translate("I want to buy a house and a car.")
+print(result['text'])
+# Output: "ME pɛ sɛ wotɔ ofie ne kar."
+```
+
+### With Custom Terminology
+
+```python
+# Create custom CSV
+cat > my_terms.csv << EOF
+text,translation
+house,ofie
+car,ntentan
+school,sukuu
+EOF
+
+# Use custom + built-in dictionary
 translator = NkraneTranslator(
-    target_lang='twi',
-    src_lang='en',
-    terminology_source='my_terminology.csv'  # Optional
+    target_lang='ak',
+    terminology_source='my_terms.csv'
 )
 
-# Translate text
-result = translator.translate("I need to buy water from the market.")
+result = translator.translate("I want to buy a house.")
 print(result['text'])
-# Output: "Mehia sɛ mekotɔ nsu firi gyinabea no mu."
 ```
-
-### Creating Terminology Files
-
-Create a CSV file with the following columns:
-
-```csv
-id,term,translation,domain,language
-1,house,ofie,general,en
-2,car,ntentan,general,en
-3,school,sukuu,education,en
-4,water,nsu,general,en
-5,market,gyinabea,commerce,en
-```
-
-### Sample Terminology
-
-The package includes a sample terminology file. Create one with:
-
-```python
-from nkrane.utils import save_sample_terminology
-
-save_sample_terminology('my_terminology.csv')
-```
-
-## Advanced Usage
 
 ### Batch Translation
 
 ```python
 texts = [
-    "I need water.",
-    "The car is at the market.",
-    "Children go to school."
+    "Buy a house today.",
+    "The car is fast.",
+    "Go to school."
 ]
 
-translator = NkraneTranslator(target_lang='twi', terminology_source='terms.csv')
-results = translator.batch_translate_sync(texts)
-
-for result in results:
-    print(result['text'])
+results = translator.batch_translate(texts)
+for r in results:
+    print(f"{r['original']} -> {r['text']}")
 ```
 
-### Using the CLI
+---
+
+## 🔧 Supported Languages
+
+### Target Languages (Built-in Dictionaries)
+
+| Code | Language | Terms Available |
+|------|----------|----------------|
+| `ak` | Akan (Twi) | 860,000+ |
+| `ee` | Ewe | 860,000+ |
+| `gaa` | Ga | 860,000+ |
+
+### Source Languages
+
+Any language supported by Google Translate (English, French, Spanish, etc.)
+
+---
+
+## 📚 How It Works
+
+### The Translation Pipeline
+
+```
+Input: "I want to buy a house."
+         ↓
+1. Noun Phrase Extraction (spaCy)
+   → Finds: "I" (pronoun), "a house" (noun chunk)
+   → Filters stopwords: "a house" → "house"
+   → Skips pronouns: "I" ignored
+         ↓
+2. Dictionary Matching
+   → "house" in dictionary? ✓ → "ofie"
+         ↓
+3. Preprocessing
+   → "I want to buy <1>."
+         ↓
+4. Google Translate
+   → "ME pɛ sɛ wotɔ <1>."
+         ↓
+5. Postprocessing (case-matched)
+   → "ME pɛ sɛ wotɔ ofie."
+         ↓
+Output: "ME pɛ sɛ wotɔ ofie."
+```
+
+### Key Innovations
+
+**Stopword Preservation**
+- Old: "a house" → `<1>` → translated stopword in wrong position
+- New: "a house" → "a `<1>`" → stopword translated naturally by Google
+
+**Case Matching**
+- Input: "House" → Output: "Ofie"
+- Input: "house" → Output: "ofie"
+- Input: "HOUSE" → Output: "OFIE"
+
+---
+
+## 🛠️ Advanced Usage
+
+### CLI Commands
 
 ```bash
 # Translate text
-nkrane translate "Hello world" --target twi --terminology my_terms.csv
+nkrane-gt translate "Hello world" --target ak
 
-# List available terminology options
-nkrane list --terminology my_terms.csv
+# List available terminology
+nkrane-gt list
 
 # Export terminology to JSON
-nkrane export --terminology my_terms.csv --format json
+nkrane-gt export --terminology my_terms.csv --format json
 
-# Create sample terminology
-nkrane sample --output sample.csv
+# Create sample terminology file
+nkrane-gt sample --output sample_terms.csv
 ```
 
-### Customizing Translation
+### Custom Terminology Format
 
-```python
-from nkrane import NkraneTranslator
+CSV with columns (auto-detected):
+- `text` / `english` / `term` / `word` - Source term
+- `translation` / `text_translated` / `target` - Target translation
 
-translator = NkraneTranslator(
-    target_lang='twi',
-    src_lang='en',
-    terminology_source='custom_terms.csv'
-)
-
-# Get detailed translation results
-result = translator.translate("The red house has water.")
-print(f"Translated: {result['text']}")
-print(f"Original: {result['original']}")
-print(f"Terms replaced: {result['replacements_count']}")
-print(f"Replaced terms: {[t.term for t in result['replaced_terms']]}")
-```
-
-## Terminology Management
-
-### CSV Format
-
-Your terminology CSV should have the following structure:
-
+Example:
 ```csv
-id,term,translation,domain,language
-1,computer,kɔmpiuta,technology,en
-2,phone,foon,technology,en
-3,hospital,ayaresabea,health,en
+text,translation
+custom house,me ofie
+big car,ntentan kɛse
 ```
 
-### Multiple Terminology Files
-
-You can load multiple CSV files from a directory:
+### Without Built-in Dictionary
 
 ```python
+# Use only your custom terms
 translator = NkraneTranslator(
-    target_lang='twi',
-    terminology_source='terminology_folder/'  # Folder containing CSV files
+    target_lang='ak',
+    terminology_source='my_terms.csv',
+    use_builtin=False  # Skip built-in dictionary
 )
 ```
 
-## Language Support
+---
 
-Nkrane supports all languages available in Google Translate. For Ghanaian languages, it uses appropriate language code conversions:
+## 🧪 Development
 
-- English → Twi: `target_lang='twi'` or `target_lang='ak'`
-- English → Ewe: `target_lang='ewe'` or `target_lang='ee'`
-- English → Ga: `target_lang='gaa'` or `target_lang='gaa'` # Ga uses three code for iso-2
+### Running Tests
 
-## Limitations
+```bash
+pip install pytest
+pytest tests/
+```
 
-- Requires internet connection for Google Translate
-- Noun phrase detection works best with English source text
-- Terminology matches are case-insensitive but case-preserving
-- Large terminology files may slow down preprocessing
+### Project Structure
 
-## Contributing
+```
+nkrane-gt/
+├── nkrane_gt/
+│   ├── __init__.py          # Package exports
+│   ├── translator.py        # Main NkraneTranslator class
+│   ├── terminology_manager.py  # Dictionary & NLP logic
+│   ├── language_codes.py    # Language code mappings
+│   ├── utils.py            # Helper functions
+│   ├── cli.py              # Command-line interface
+│   └── data/               # Built-in dictionaries
+│       ├── nouns_ak.pkl    # Akan/Twi terms
+│       ├── nouns_ee.pkl    # Ewe terms
+│       └── nouns_gaa.pkl   # Ga terms
+├── tests/
+├── setup.py
+└── README.md
+```
 
-We welcome contributions!
+---
 
-## Citation
+## 📖 Citation
 
-If you use Nkrane in your research, please cite:
+If you use Nkrane-GT in your research, please cite:
 
 ```bibtex
-@software{nkrane2026,
-  title = {Nkrane: Enhanced Machine Translation with Terminology Control},
-  author = {GhanaNLP Community},
-  year = {2026},
-  url = {https://github.com/GhanaNLP/nkrane}
+@software{nkrane_gt,
+  title={Nkrane-GT: Enhanced Machine Translation with Terminology Control},
+  author={Your Name},
+  year={2024},
+  url={https://github.com/yourusername/nkrane-gt}
 }
 ```
 
-## License
+---
 
-MIT License 
+## 🤝 Contributing
 
-## Support
+Contributions welcome! Areas of interest:
+- Additional language support
+- Improved noun phrase extraction
+- Domain-specific terminology packs
+- Performance optimizations
 
-- Issues: [GitHub Issues](https://github.com/GhanaNLP/nkrane/issues)
-- Discussions: [GitHub Discussions](https://github.com/GhanaNLP/nkrane/discussions)
-- Email: natural.language.processing.gh@gmail.com
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+---
+
+## 📝 License
+
+MIT License - see [LICENSE](LICENSE) file.
+
+---
+
+## 🙏 Acknowledgments
+
+- Built on [Google Translate](https://translate.google.com/) for base translation
+- Uses [spaCy](https://spacy.io/) for NLP processing
+- Inspired by the need for better African language translation tools
+
+**"Nkrane"** means "translation" or "interpreter" in Akan/Twi.
+
+---
+
+## 📧 Contact
+
+- Issues: [GitHub Issues](https://github.com/yourusername/nkrane-gt/issues)
+- Email: your.email@example.com
