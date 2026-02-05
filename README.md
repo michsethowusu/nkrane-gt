@@ -55,7 +55,6 @@ python -m spacy download en_core_web_sm
 Create a CSV file with your preferred translations:
 
 ```bash
-cat > my_terms.csv << EOF
 text,text_translated
 house,efie
 car,kaa
@@ -64,7 +63,6 @@ station,gyinabea
 school,sukuu
 teacher,okyerɛkyerɛfo
 student,asuafo
-EOF
 ```
 
 ### Step 2: Translate with Your Terminology
@@ -90,18 +88,9 @@ print(f"Terms replaced: {result['replacements_count']}")
 ### Batch Translation
 
 ```python
-# Create terminology for batch translation
-cat > batch_terms.csv << EOF
-text,text_translated
-house,efie
-car,kaa
-school,sukuu
-student,asuafo
-EOF
-
 translator = NkraneTranslator(
     target_lang='ak',
-    terminology_source='batch_terms.csv'
+    terminology_source='my_terms.csv'
 )
 
 texts = [
@@ -271,53 +260,6 @@ Let Google Translate handle:
 
 ---
 
-## 🎓 Example Use Cases
-
-### News Translation
-```python
-# Create terminology for your news domain
-cat > news_terms.csv << EOF
-text,text_translated
-parliament,mmarahyɛ bagua
-minister,ɔsoafoɔ
-president,ɔmampanyin
-election,abatoɔ
-government,aban
-EOF
-
-translator = NkraneTranslator(
-    target_lang='ak',
-    terminology_source='news_terms.csv'
-)
-```
-
-### Educational Content
-```python
-# School-related terminology
-cat > education_terms.csv << EOF
-text,text_translated
-teacher,okyerɛkyerɛfo
-student,asuafo
-classroom,adesuadan
-homework,fie adwuma
-examination,sɔhwɛ
-EOF
-```
-
-### Medical Documentation
-```python
-# Medical terminology
-cat > medical_terms.csv << EOF
-text,text_translated
-hospital,ayaresabea
-doctor,dɔkota
-patient,ɔyarefo
-medicine,aduro
-treatment,ayaresa
-EOF
-```
-
----
 
 ## 🔍 Troubleshooting
 
